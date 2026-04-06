@@ -1,48 +1,94 @@
 import requests
 import os
+import re
 
-# 固定配置，不要修改
+# 配置
 BASE_URL = "https://woshinibaba.tzh911.qzz.io"
 M3U_URL = f"{BASE_URL}/playlist.m3u"
 OUTPUT_FILE = "live.m3u"
 
+# 自动翻译频道名称（中文 → 英文）
+def translate_channel_name(name):
+    translations = {
+        "中国": "China",
+        "香港": "HongKong",
+        "台湾": "Taiwan",
+        "澳门": "Macau",
+        "马来西亚": "Malaysia",
+        "新加坡": "Singapore",
+        "印尼": "Indonesia",
+        "印度": "India",
+        "泰国": "Thailand",
+        "英国": "UK",
+        "美国": "USA",
+        "日本": "Japan",
+        "韩国": "Korea",
+        "体育": "Sports",
+        "电影": "Movies",
+        "综艺": "Entertainment",
+        "新闻": "News",
+        "财经": "Finance",
+        "少儿": "Kids",
+        "动画": "Cartoon",
+        "综合": "General",
+        "卫视": "TV",
+        "直播": "Live",
+        "频道": "Channel",
+        "高清": "HD",
+        "备用": "Backup",
+        "测试": "Test"
+    }
+
+    for ch, en in translations.items():
+        name = name.replace(ch, en)
+    
+    return name
+
+# 抓取 M3U
 def fetch_m3u(url):
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0",
             "Referer": BASE_URL
         }
         resp = requests.get(url, headers=headers, timeout=20)
         resp.raise_for_status()
         return resp.text
-    except Exception as e:
-        print(f"❌ 抓取失败: {str(e)}")
+    except:
         return ""
 
-# 1. 抓取源
+# 开始处理
 content = fetch_m3u(M3U_URL)
 if not content:
-    print("❌ 未获取到M3U内容，任务终止")
     exit(1)
 
-# 2. 去重+格式校验
 lines = content.splitlines()
-valid_lines = []
+new_lines = ["#EXTM3U"]
 seen = set()
-
-# 强制保留#EXTM3U头
-if not lines[0].strip().startswith("#EXTM3U"):
-    valid_lines.append("#EXTM3U")
 
 for line in lines:
     stripped = line.strip()
-    if stripped.startswith(("#EXTINF", "http", "#EXTM3U")) and stripped not in seen:
-        seen.add(stripped)
-        valid_lines.append(line)
+    if not stripped:
+        continue
 
-# 3. 写入文件
-final_content = "\n".join(valid_lines)
+    # 翻译频道名
+    if stripped.startswith("#EXTINF"):
+        # 提取名称
+        match = re.search(r'#EXTINF:-1,(.*)', stripped)
+        if match:
+            original_name = match.group(1)
+            en_name = translate_channel_name(original_name)
+            line = line.replace(original_name, en_name)
+
+    # 去重
+    if stripped.startswith(("#EXTINF", "http")):
+        if stripped not in seen:
+            seen.add(stripped)
+            new_lines.append(line)
+
+# 保存
+final_content = "\n".join(new_lines)
 with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
     f.write(final_content)
 
-print(f"✅ 成功生成 {OUTPUT_FILE}，共 {len(valid_lines)-1} 条有效频道")
+print(f"✅ 翻译完成！已生成英文频道版 live.m3u")
